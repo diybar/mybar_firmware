@@ -1,3 +1,5 @@
+<p align="center"><img src="images/mybar_logo.png" alt="MyBar" width="120"></p>
+
 # MyBar firmware
 
 [![Firmware](https://github.com/diybar/mybar_firmware/actions/workflows/firmware.yml/badge.svg)](https://github.com/diybar/mybar_firmware/actions/workflows/firmware.yml)
