@@ -1,0 +1,185 @@
+# MyBar firmware CI/CD
+#
+# pull_request        -> compile the sketch, publish the binaries as a workflow artifact
+# push to main        -> compile, then
+#                          * create the GitHub release v<firmwareVersion> (skipped if that tag exists)
+#                          * deploy the web flasher + binaries to GitHub Pages
+# workflow_dispatch   -> same as a push to the selected branch
+#
+# The version comes from `const String firmwareVersion = "x.yz";` in src/*.ino.
+# To publish a new release: bump that constant and merge to main.
+#
+# One-time setup: Settings -> Pages -> Source: "GitHub Actions".
+name: Firmware
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  ARDUINO_CLI_VERSION: 1.5.1
+  ESP32_CORE_VERSION: 3.3.5
+  ESP32_INDEX_URL: https://espressif.github.io/arduino-esp32/package_esp32_index.json
+
+jobs:
+  build:
+    name: Compile
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      size: ${{ steps.meta.outputs.size }}
+      md5: ${{ steps.meta.outputs.md5 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install arduino-cli
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: ${{ env.ARDUINO_CLI_VERSION }}
+
+      - name: Cache ESP32 core
+        uses: actions/cache@v4
+        with:
+          path: ~/.arduino15
+          key: arduino15-esp32-${{ env.ESP32_CORE_VERSION }}-cli-${{ env.ARDUINO_CLI_VERSION }}
+
+      - name: Install ESP32 core
+        run: |
+          arduino-cli config init --overwrite
+          arduino-cli config add board_manager.additional_urls "$ESP32_INDEX_URL"
+          arduino-cli core update-index
+          arduino-cli core install "esp32:esp32@$ESP32_CORE_VERSION"
+
+      - name: Build firmware
+        run: bash scripts/build.sh
+
+      - name: Read build metadata
+        id: meta
+        run: |
+          {
+            echo "version=$(jq -r .version dist/version.json)"
+            echo "size=$(jq -r .size dist/version.json)"
+            echo "md5=$(jq -r .md5 dist/version.json)"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### MyBar firmware $(jq -r .version dist/version.json)"
+            echo
+            echo '| File | Size | MD5 |'
+            echo '|---|---|---|'
+            for f in dist/firmware/*.bin; do
+              echo "| $(basename "$f") | $(wc -c < "$f") | $(md5sum "$f" | cut -d' ' -f1) |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mybar-firmware-${{ steps.meta.outputs.version }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: GitHub release
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.build.outputs.version }}
+      TAG: v${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: mybar-firmware-${{ env.VERSION }}
+          path: dist
+
+      - name: Skip if this version is already released
+        id: check
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists. Bump firmwareVersion in the sketch to publish a new release."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release ${{ env.TAG }}
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          PAGES_URL="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/"
+          BIN="mybar-$VERSION.bin"
+          cat > notes.md <<MD
+          ## MyBar firmware $VERSION
+
+          | | |
+          |---|---|
+          | OTA image | \`$BIN\` |
+          | Size | \`${{ needs.build.outputs.size }}\` bytes |
+          | MD5 | \`${{ needs.build.outputs.md5 }}\` |
+          | App command | \`otaStart:${{ needs.build.outputs.size }}:${{ needs.build.outputs.md5 }}\` |
+
+          **Install from the browser:** $PAGES_URL (Chrome or Edge, USB cable).
+
+          **Over the air:** send \`$BIN\` from the MyBar app, see [docs/FIRMWARE_UPDATE.md](https://github.com/$GITHUB_REPOSITORY/blob/$TAG/docs/FIRMWARE_UPDATE.md).
+
+          **Manual USB flash:** \`esptool.py --chip esp32 write_flash 0x0 mybar-$VERSION.merged.bin\`
+
+          Built from $GITHUB_SHA with esp32 core $ESP32_CORE_VERSION.
+          MD
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "MyBar firmware $VERSION" \
+            --notes-file notes.md \
+            --generate-notes \
+            dist/firmware/* dist/debug/* dist/version.json
+
+  pages:
+    name: Deploy web flasher
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: mybar-firmware-${{ needs.build.outputs.version }}
+          path: dist
+
+      - name: Assemble site
+        run: |
+          mkdir -p site
+          cp -r web/. site/
+          cp dist/manifest.json dist/version.json site/
+          cp -r dist/firmware site/firmware
+          touch site/.nojekyll
+          find site -type f | sort
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
