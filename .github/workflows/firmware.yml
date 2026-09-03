@@ -176,6 +176,8 @@ jobs:
           find site -type f | sort
 
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true   # create the Pages site (source: GitHub Actions) if the repo does not have one yet
 
       - uses: actions/upload-pages-artifact@v3
         with:

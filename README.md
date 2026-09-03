@@ -9,7 +9,7 @@ Firmware for the MyBar ESP32 controller board (motor control, glass detection, B
 
 ### From the browser (recommended)
 
-Open **https://diybar.github.io/mybar_firmware/** in Chrome or Edge, connect the board over USB and click *Install*. The page always offers the latest release and needs no Arduino IDE or drivers beyond the USB serial driver of your board.
+Open **https://diybar.github.io/mybar_firmware/** in Chrome or Edge, connect the board over USB and click *Install*. The page always offers the latest release and needs no Arduino IDE or drivers beyond the USB serial driver of your board. Details and troubleshooting: [docs/WEB_FLASHER.md](docs/WEB_FLASHER.md).
 
 ### Over Bluetooth
 
@@ -29,7 +29,7 @@ Every release on the [releases page](https://github.com/diybar/mybar_firmware/re
 
 ## Releasing a new version
 
-Releases are fully automated by [.github/workflows/firmware.yml](.github/workflows/firmware.yml):
+Releases are fully automated by [.github/workflows/firmware.yml](.github/workflows/firmware.yml) (full description in [docs/CI_CD.md](docs/CI_CD.md)):
 
 1. Bump `firmwareVersion` in `src/MyBar_*.ino` (for example `"1.97"`).
 2. Open a pull request. CI compiles the sketch and attaches the binaries to the workflow run so you can test them.
@@ -39,7 +39,7 @@ Releases are fully automated by [.github/workflows/firmware.yml](.github/workflo
 
 If `firmwareVersion` was not changed the release step is skipped (the tag already exists) and only the web flasher is redeployed.
 
-One-time repository setup: *Settings → Pages → Build and deployment → Source: GitHub Actions*.
+The workflow creates the GitHub Pages site itself on the first deploy (source: GitHub Actions). If that ever fails, set *Settings → Pages → Build and deployment → Source: GitHub Actions* by hand and re-run the failed job.
 
 ## Building locally
 
@@ -72,7 +72,7 @@ You can still use the Arduino IDE. Copy the libraries from `Libraries/library` i
 | `Libraries/library/` | Third party and in-house Arduino libraries the sketch depends on |
 | `scripts/build.sh` | Reproducible build used by CI and locally |
 | `web/` | The web flasher page deployed to GitHub Pages |
-| `docs/` | [OTA update protocol](docs/FIRMWARE_UPDATE.md) |
+| `docs/` | [CI/CD pipeline](docs/CI_CD.md), [web flasher](docs/WEB_FLASHER.md), [OTA update protocol](docs/FIRMWARE_UPDATE.md) |
 | `images/` | Board pinout and SVD file |
 
 ## ESP32 board pin out

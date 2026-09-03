@@ -2,6 +2,8 @@
 
 Starting with firmware 1.96 the MyBar board can receive a new firmware image from the mobile app over Bluetooth Low Energy (BLE), verify it, and reboot into it. No USB cable is needed after the first flash.
 
+Related documents: [CI_CD.md](CI_CD.md) (how images are built and released), [WEB_FLASHER.md](WEB_FLASHER.md) (first installation over USB from the browser).
+
 This document covers:
 
 1. How the update works on the board
