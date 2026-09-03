@@ -60,7 +60,7 @@ jobs:
           arduino-cli core install "esp32:esp32@$ESP32_CORE_VERSION"
 
       - name: Build firmware
-        run: scripts/build.sh
+        run: bash scripts/build.sh
 
       - name: Read build metadata
         id: meta
